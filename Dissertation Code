@@ -1,0 +1,2102 @@
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(gdata)
+library(seqinr)
+library(devEMF)
+library(ggrepel)
+library(ggtext)
+library(ggpubr)
+
+fasta_fputr <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_fpUTRs.fasta")
+sequences <- getSequence(fasta_fputr)
+headers <- getName(fasta_fputr)
+
+feature_seqs_fputr <- data.frame(transcript = NULL, sequence = NULL, GC_content = NULL)
+
+for (i in 1:length(headers)) {
+  feature_seqs_fputr <- rbind(feature_seqs_fputr, data.frame(transcript = headers[[i]], sequence = paste(sequences[[i]], collapse=""), GC_content = GC(seq = sequences[[i]], forceToLower = FALSE)))
+}
+
+#Coding Sequence
+fasta_CDS <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_CDSs.fasta")
+sequences <- getSequence(fasta_CDS)
+headers <- getName(fasta_CDS)
+
+feature_seqs_CDS <- data.frame(transcript = NULL, sequence = NULL, GC3_content = NULL)
+
+for (i in 1:length(headers)) {
+  feature_seqs_CDS <- rbind(feature_seqs_CDS, data.frame(transcript = headers[[i]], sequence = paste(sequences[[i]], collapse=""),GC_content = GC(seq = sequences[[i]], forceToLower = FALSE), GC1_content = GC1(seq = sequences [[i]]), GC2_content = GC2(seq = sequences[[i]]), GC3_content = GC3(seq = sequences[[i]])))
+}
+
+#Three Prime UTR
+fasta_tputr <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_tpUTRs.fasta")
+sequences <- getSequence(fasta_tputr)
+headers <- getName(fasta_tputr)
+
+feature_seqs_tputr <- data.frame(transcript = NULL, sequence = NULL, GC_content = NULL)
+
+for (i in 1:length(headers)) {
+  feature_seqs_tputr <- rbind(feature_seqs_tputr, data.frame(transcript = headers[[i]], sequence = paste(sequences[[i]], collapse=""), GC_content = GC(seq = sequences[[i]], forceToLower = FALSE)))
+}
+
+feature_seqs_fputr <- feature_seqs_fputr[!(feature_seqs_fputr$sequence == "no 5' utr (cds starts at position 1)"),]
+feature_seqs_tputr <- feature_seqs_tputr[!(feature_seqs_tputr$sequence == "no 3' utr (no 3' utr sequence is given)"),]
+
+rm(fasta_CDS,fasta_fputr,fasta_tputr,headers, i)
+
+#Import CSC and tAI scores from that paper
+AAs <- read_csv("AA_Single_letter.csv")
+hela <- read_csv("Hela.csv", col_types = cols(HeLa_CSC = col_number(),
+                                              HEK293_tAI = col_number(), 
+                                              HeLa_Avg_tAI = col_number())) 
+hela <- mutate_at(hela, .vars = vars("Codon") , .funs=tolower)
+hela <- hela %>% mutate(wobble = factor(str_sub(Codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")))
+
+my_cols <- c("Reference", "Gene", "Protein", "tp_sites")
+
+ENSEMBLE <- read_tsv("ENSEMBLE-REFSEQ.txt")
+
+my_theme <- theme_classic() + theme(axis.title=element_text(size=20,face="bold"),
+                                    axis.text.x = element_text(size = 18, color = "black"),
+                                    axis.text.y = element_text(size = 18, color = "black"),
+                                    legend.title = element_text(size=20),
+                                    legend.text = element_text(size=18), 
+                                    plot.title = element_text(hjust = 0.5, vjust = + 2.2, size = 22, face = "bold"),
+                                    axis.title.y = element_text(margin=margin(r=15)),
+                                    axis.title.x = element_text(vjust = -0.5),
+                                    legend.position = "bottom")
+
+CCR4 <- read_csv("CCR4_dep_CSCs.csv")
+hela <- inner_join(hela, CCR4, by = c("Codon" = "codon"))
+
+#Plot Hela CSCs against CNOT1 depleted CSCs
+g <- ggplot(hela, aes(HeLa_CSC, cor_estimate, colour = wobble)) +
+  geom_point()+
+  geom_text(aes(label = Codon, colour = wobble), show.legend = F)+
+  xlab("HeLa CSCs")+
+  ylab("Alternative CSCs")+
+  ggtitle("Normal vs. Alternative HeLa CSCs")+
+  my_theme
+
+emf("Normalvsalt.emf", height  = 6, width = 9)
+print(g)
+dev.off()
+
+
+#read data + create theme #####
+mir1 <- read_csv("mir1.csv", col_types = cols(Peptide = col_number(),
+                                              Measurement = col_number(), 
+                                              Protein = col_double(),
+                                              `25%` = col_double(), 
+                                              `75%` = col_double(), 
+                                              mRNA = col_double(), 
+                                              Error = col_double()))
+
+
+mir124 <- read_csv("mir124.csv", col_types = cols(Peptide = col_number(),
+                                                  Measurement = col_number(), 
+                                                  Protein = col_double(),
+                                                  `25%` = col_double(), 
+                                                  `75%` = col_double(), 
+                                                  mRNA = col_double(), 
+                                                  Error = col_double()))
+
+
+mir181 <- read_csv("mir181.csv", col_types = cols(Peptide = col_number(),
+                                                  Measurement = col_number(), 
+                                                  Protein = col_double(),
+                                                  `25%` = col_double(), 
+                                                  `75%` = col_double(), 
+                                                  mRNA = col_double(), 
+                                                  Error = col_double()))
+
+mir223 <- read_csv("mir223.csv", col_types = cols(Peptide = col_number(),
+                                                  Measurement = col_number(), 
+                                                  `Culture_Protein` = col_double(), 
+                                                  `25%` = col_double(), 
+                                                  `75%` = col_double(), 
+                                                  `Culture_mRNA` = col_double(), 
+                                                  s.e.m. = col_double(), 
+                                                  `Sorted_Progenitor_mRNA` = col_double(), 
+                                                  `Sorted_Neutrophil_mRNA` = col_double(), 
+                                                  neut_dev_mRNA = col_double()))
+
+
+my_theme <- theme_classic() + theme(axis.title=element_text(size=20,face="bold"),
+                                    axis.text.x = element_text(size = 18, color = "black"),
+                                    axis.text.y = element_text(size = 18, color = "black"),
+                                    legend.title = element_text(size=20),
+                                    legend.text = element_text(size=18), 
+                                    plot.title = element_text(hjust = 0.5, vjust = +2.2, size = 22, face = "bold"),
+                                    axis.title.y = element_text(margin=margin(r=15)),
+                                    axis.title.x = element_text(vjust = -0.5))
+
+three_prime <- function(x){
+  x %>% 
+    mutate(tp_sites = rowSums(x[,10:12]),
+           group = factor(case_when(tp_sites == 0 ~ "no seed site",
+                                    tp_sites == 1 ~ "1 seed site",
+                                    tp_sites > 1 ~ ">1 seed site")))  
+}
+#Create upregulated and downregulated proteins ####
+#USe function three prime on each of the 3 datasets
+mir1.3p <- three_prime(mir1) %>% 
+  filter(tp_sites >= 1) %>%
+  mutate(mir = "mir1")
+
+mir124.3p <- three_prime(mir124) %>%
+  filter(tp_sites >= 1) %>%
+  mutate(mir = "mir124")
+
+mir181.3p <- three_prime(mir181) %>%
+  filter(tp_sites >= 1) %>%
+  mutate(mir = "mir181")
+
+
+mir1.3p.bottom <- mir1.3p %>%
+  filter(Protein < quantile(mir1.3p$Protein,0.25, na.rm = T))
+
+mir1.3p.top <- mir1.3p %>% 
+  filter(Protein > quantile(mir1.3p$Protein,0.75, na.rm = T))
+
+
+
+
+mir124.3p.bottom <- mir124.3p %>%
+  filter(Protein < quantile(mir124.3p$Protein,0.10, na.rm = T))
+
+mir124.3p.top <- mir124.3p %>%
+  filter(Protein > quantile(mir124.3p$Protein,0.90, na.rm = T))
+
+
+
+
+mir181.3p.bottom <- mir181.3p %>%
+  filter(Protein < quantile(mir181.3p$Protein,0.10, na.rm = T))
+
+mir181.3p.top <- mir181.3p %>%
+  filter(Protein > quantile(mir181.3p$Protein,0.90, na.rm = T))
+
+
+baek_upregulated <- rbind(mir1.3p.top, mir124.3p.top, mir181.3p.top) %>%  mutate(response = as.factor("Upregulated"))
+baek_downregulated <- rbind(mir1.3p.bottom, mir124.3p.bottom, mir181.3p.bottom) %>% mutate(response = as.factor("Downregulated"))
+baek_affected <- rbind(baek_downregulated,baek_upregulated)
+
+keep(feature_seqs_CDS, feature_seqs_fputr, feature_seqs_tputr, baek_affected, baek_upregulated, baek_downregulated, AAs, ENSEMBLE, hela, my_theme, my_cols, sure = T)
+
+tytle = "Baek et al., 2008"
+
+Upvsdown <- ggplot(baek_affected, aes(Protein, color = response, fill = response)) + 
+  geom_density(aes(x= Protein, y=..scaled..),size =1) + 
+  xlim(-1,1) + 
+  scale_color_manual(values = c("blue", "firebrick3"), guide = FALSE ) + 
+  scale_fill_manual(values = c("blue", "firebrick3"), name = "Response") + 
+  xlab("Protein fold change (log2)") + 
+  ylab("Cumulative fraction") + 
+  ggtitle(tytle)+ 
+  my_theme + theme(legend.position = "bottom")
+
+Upvsdown
+
+emf("baek_2008_Upvsdown.emf", height = 6, width = 9)
+print(Upvsdown)
+dev.off()
+
+
+baek_affected_fpfasta <- baek_affected %>% inner_join(feature_seqs_fputr, by = c("Reference" = "transcript"))
+baek_affected_cdsfasta <- baek_affected %>% inner_join(feature_seqs_CDS, by = c("Reference" = "transcript"))
+baek_affected_tpfasta <- baek_affected %>% inner_join(feature_seqs_tputr, by = c("Reference" = "transcript"))
+
+GCcontfp <- ggplot(baek_affected_fpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch =T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("5' UTR GC content") + 
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test", 
+                     size = 6,
+                     hjust = -.5)
+
+
+GCcontfp
+
+
+meany <- baek_affected_fpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_fp = mean(GC_content))
+
+number <- baek_affected_fpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(meany, number, by = c("response"))
+
+emf("baek_2008_fpGCcont.emf", height = 6, width = 9)
+print(GCcontfp)
+dev.off()
+
+
+
+GCcontcds <- ggplot(baek_affected_cdsfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black" ) +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("CDS GC content") + 
+  ggtitle(tytle) +    
+  my_theme +
+  stat_compare_means(size = 6,
+                     hjust = -0.5)
+
+meany <- baek_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_cds = mean(GC_content))
+
+number <- baek_affected_cdsfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GCcontcds
+
+emf("baek_2008_CDS GC Content.emf", height = 6, width = 9)
+print(GCcontcds)
+dev.off()
+
+
+GCconttp <- ggplot(baek_affected_tpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("3' UTR GC content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(
+    method = "wilcox.test",
+    size = 6,
+    hjust = -0.5)
+
+GCconttp
+
+emf("baek_2008_TP GC Content.emf", height = 6, width = 9)
+print(GCconttp)
+dev.off()
+
+meany <- baek_affected_tpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_tp = mean(GC_content))
+
+number <- baek_affected_tpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GC1contcds <- ggplot(baek_affected_cdsfasta, aes(x = response, y = GC1_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC1 content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC1contcds
+
+emf("baek_2008_GC1 Content.emf", height = 6, width = 9)
+print(GC1contcds)
+dev.off()
+
+meany <- baek_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC1 = mean(GC1_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC2contcds <- ggplot(baek_affected_cdsfasta, aes(x = response, y = GC2_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC2 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC2contcds
+
+emf("baek_2008_GC2 Content.emf", height = 6, width = 9)
+print(GC2contcds)
+dev.off()
+
+meany <- baek_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC2 = mean(GC2_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC3contcds <-  ggplot(baek_affected_cdsfasta, aes(x = response, y = GC3_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC3 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC3contcds
+
+emf("baek_2008_GC3 Content.emf", height = 6, width = 9)
+print(GC3contcds)
+dev.off()
+
+meany <- baek_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC3 = mean(GC3_content))
+z <- inner_join(z, meany, by = c("response"))
+
+Upregulated <- baek_affected %>% filter(response == "Upregulated")
+Downregulated <- baek_affected %>% filter(response == "Downregulated")
+
+fasta_CDS <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_CDSs.fasta")
+sequences <- getSequence(fasta_CDS)
+headers <- getName(fasta_CDS)
+
+upreg <- pull(Upregulated, var = Reference)
+downreg <- pull(Downregulated, var = Reference)
+
+Upregulated_list <- list()
+Downregulated_list <- list()
+
+for (i in 1:length(headers)) {
+  transcript <- headers[[i]]
+  
+  if (transcript %in% upreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Upregulated")) -> Upregulated_list[[transcript]]
+  }
+  
+  if (transcript %in% downreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Downregulated")) -> Downregulated_list[[transcript]]
+  }
+}
+
+Upregulated_data <- do.call("rbind", Upregulated_list)
+Downregulated_data <- do.call("rbind", Downregulated_list)
+all_data <- rbind(Upregulated_data, Downregulated_data)
+
+RCU <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_RSCU = mean(RSCU, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_RSCU)
+
+
+RCU_plot<- ggplot(RCU,aes(x = Upregulated, y = Downregulated))+ 
+  geom_point(aes(colour = wobble), shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("RSCU Upregulated Proteins") + 
+  ylab("RSCU Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+RCU_plot
+
+emf("baek 2008 RCU.emf", height= 6, width= 9)
+print(RCU_plot)
+dev.off()
+
+meanfreq <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_freq)
+
+freq_plot <-  ggplot(meanfreq,aes(x = Upregulated, y = Downregulated, colour = wobble))+ 
+  geom_point(shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("Codon Frequency Upregulated Proteins") + 
+  ylab("Codon Frequency \n Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+freq_plot
+
+emf("baek 2008 Freq_plot.emf", height= 6, width= 9)
+print(freq_plot)
+dev.off()
+
+#####
+
+
+###
+
+
+
+optimal <- inner_join(all_data,hela, by = c("codon"="Codon"))
+
+optimal1 <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*HeLa_CSC*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+
+optimality_plot <- ggplot(optimal1,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Downregulated", "Upregulated")) + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "t.test",
+                                  size = 6,
+                                  hjust = -0.5)
+
+optimality_plot
+
+alt_optimality <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*cor_estimate*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+alt_plot <- ggplot(alt_optimality,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Alt. Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Downregulated", "Upregulated")) + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "wilcox",
+                                  size = 6,
+                                  hjust = -0.5)
+
+alt_plot
+
+
+emf("baek 2008 Optimality Plot.emf", height= 6, width= 9)
+print(optimality_plot)
+dev.off()
+
+emf("baek 2008 alternative plot.emf", height = 6, width = 9)
+print(alt_plot)
+dev.off()
+
+number <- optimal %>% 
+  dplyr::count(response)
+
+meany <- optimal %>% 
+  group_by(response) %>%
+  summarise(mean_opt = mean(mean_optimality))
+
+z <- inner_join(z, meany, by = c("response"))
+
+
+GCAU <- all_data %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")),
+         `Wobble Position Identity` = factor(case_when(wobble == "A" | wobble == "U" ~ "A/U",
+                                                       wobble == "C" | wobble == "G" ~ "G/C",))) %>%
+  group_by(group, transcript, `Wobble Position Identity`) %>%
+  summarise(meanfreq = mean(freq)) %>% 
+  ungroup
+
+
+GCAU_plot <- GCAU %>% ggplot(aes(x = group, y = meanfreq, fill = `Wobble Position Identity`))+
+  geom_boxplot(lwd =1)+
+  scale_fill_manual(values = c("red","blue")) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen", position = position_dodge(width = 0.75), show.legend = F) +
+  xlab("Response") +
+  ylab("Mean Frequency Per Transcript")+
+  ggtitle(tytle)+
+  my_theme + theme(legend.position = "bottom") +
+  
+  stat_compare_means(aes(group = `Wobble Position Identity`),
+                     label = "p.signif",
+                     method = "t.test",
+                     size = 7) 
+print(GCAU_plot)
+
+emf("Baek GCAU.emf", height = 6, width = 9)
+print(GCAU_plot)
+dev.off()
+#Amino acid bias ####
+aa_data <- all_data %>%
+  filter(AA != "Stp") %>%
+  group_by(AA, group) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  spread(key = group, value = mean_freq) %>%
+  inner_join(AAs, by = c("AA" = "AA"))
+
+aa_data$AA <- as.factor(aa_data$AA)
+
+
+aa_bias_plot_colours <- ggplot(aa_data, aes(Upregulated,Downregulated, fill = AA)) + 
+  geom_point(shape = 21,size = 5, alpha = 0.8) +
+  scale_fill_manual(values = c("blue", "blue4", "blueviolet", "brown", "cadetblue1", "cadetblue4","chartreuse", "chartreuse4", "chocolate1", "coral1", "cornflowerblue", "darkgoldenrod1", "slateblue4", "darkgreen", "darkmagenta", "deeppink", "green", "snow4", "yellow", "turquoise1")) +
+  geom_abline(slope = 1, intercept = 0, size = 1, linetype = "dashed") +
+  xlab("AA Frequency Upregulated Proteins") + 
+  ylab("AA Frequency Downregulated Proteins") +
+  ggtitle(tytle) + my_theme +theme(legend.position = "right")
+
+aa_bias_plot_colours
+
+
+emf("baek 2008 Amino Acid Bias.emf", height = 6, width = 9)
+print(aa_bias_plot_colours)
+dev.off()
+
+df1 <- baek_affected_cdsfasta
+df1 <- df1 %>% 
+  mutate(percentile_group = 
+           factor(case_when(df1$GC3_content < quantile(df1$GC3_content, 0.1) ~ "0 - 10",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.1) & df1$GC3_content < quantile(df1$GC3_content, 0.2)  ~ "10 - 20",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.2) & df1$GC3_content < quantile(df1$GC3_content, 0.3)  ~ "20 - 30",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.3) & df1$GC3_content < quantile(df1$GC3_content, 0.4)  ~ "30 - 40",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.4) & df1$GC3_content < quantile(df1$GC3_content, 0.5)  ~ "40 - 50",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.5) & df1$GC3_content < quantile(df1$GC3_content, 0.6)  ~ "50 - 60",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.6) & df1$GC3_content < quantile(df1$GC3_content, 0.7)  ~ "60 - 70",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.7) & df1$GC3_content < quantile(df1$GC3_content, 0.8)  ~ "70 - 80",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.8) & df1$GC3_content < quantile(df1$GC3_content, 0.9)  ~ "80 - 90",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.9) ~ "90 - 100")))
+
+test<- inner_join(df1 %>% group_by(percentile_group) %>% summarise(across(Protein, mean, na.rm = T)),df1 %>% dplyr::count(percentile_group), by = "percentile_group")
+
+x <- ggplot(test, aes(percentile_group, Protein, label = n)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(color = "black", fontface = "bold", position = position_stack(vjust = 0.5), size = 10) + 
+  xlab("GC3 Decile (%)") + 
+  ylab("Mean Fold Change Protein (log2)") + 
+  ggtitle("Mean Protein Fold Change \n per GC3 Decile") + 
+  my_theme + theme(axis.text.x = element_text(angle=45, vjust = +0.5))
+x
+
+emf("baek 2008 GC3 Decile.emf")
+print(x)
+dev.off()
+
+write.csv(z, "baek_2008_stats.csv", row.names=FALSE, quote=FALSE)
+
+keep(feature_seqs_CDS,feature_seqs_fputr,feature_seqs_tputr, AAs, hela, my_cols, my_theme, ENSEMBLE, sure = T)
+
+#Mestdagh et al., 2011 ####################
+mestdagh_2011 <- read_csv("Mestdagh_2011.csv")
+tytle = "Mestdagh et al., 2011"
+
+mestdagh_2011 <- mestdagh_2011 %>% mutate(tp_sites = mestdagh_2011$`miR-17/20a_7mer-A1` + 
+                                            mestdagh_2011$`miR-18a_7mer-A1` + 
+                                            mestdagh_2011$`miR-19a/b_7mer-A1` +
+                                            mestdagh_2011$`miR-92a_7mer-A1`+
+                                            mestdagh_2011$`miR-17/20a_7mer-m8`+
+                                            mestdagh_2011$`miR-18a_7mer-m8` +
+                                            mestdagh_2011$`miR-19a/b_7mer-m8`+
+                                            mestdagh_2011$`miR-92a_7mer-m8` +
+                                            mestdagh_2011$`miR-17/20a_8mer` +
+                                            mestdagh_2011$`miR-18a_8mer` +
+                                            mestdagh_2011$`miR-19a/b_8mer` +
+                                            mestdagh_2011$`miR-92a_8mer`,
+                                          Measurement = mestdagh_2011$Peptide)
+#Exclude columns
+mestdagh_2011 <- mestdagh_2011[,my_cols]
+
+#Exclude values in the reference column don't begin with "NM_" (RefSeq codes)
+index <- grep('^NM_.*?', mestdagh_2011$Reference)
+mestdagh_2011 <- mestdagh_2011[index,]
+
+mestdagh_2011 <- mestdagh_2011 %>% filter(tp_sites >= 1)
+
+
+mestdagh_downreg <- mestdagh_2011 %>% 
+  filter(Protein < quantile(mestdagh_2011$Protein,0.25, na.rm = T)) %>%
+  mutate(response = "Downregulated")
+
+mestdagh_upreg <- mestdagh_2011 %>% 
+  filter(Protein > quantile(mestdagh_2011$Protein,0.75, na.rm = T)) %>%
+  mutate(response = "Upregulated")
+
+mestdagh_affected <- rbind(mestdagh_downreg, mestdagh_upreg)
+
+########################
+
+
+Upvsdown <- ggplot(mestdagh_affected, aes(Protein, color = response, fill = response)) + 
+  geom_density(aes(x= Protein, y=..scaled..),size =1) + 
+  xlim(-1,1) + 
+  scale_color_manual(values = c("blue", "firebrick3"), guide = FALSE ) + 
+  scale_fill_manual(values = c("blue", "firebrick3"), name = "Response") + 
+  xlab("Protein fold change (log2)") + 
+  ylab("Cumulative fraction") + 
+  ggtitle(tytle)+ 
+  my_theme + theme(legend.position = "bottom")
+
+Upvsdown
+
+emf("mestdagh_2008_Upvsdown.emf", height = 6, width = 9)
+print(Upvsdown)
+dev.off()
+
+
+mestdagh_affected_fpfasta <- mestdagh_affected %>% inner_join(feature_seqs_fputr, by = c("Reference" = "transcript"))
+mestdagh_affected_cdsfasta <- mestdagh_affected %>% inner_join(feature_seqs_CDS, by = c("Reference" = "transcript"))
+mestdagh_affected_tpfasta <- mestdagh_affected %>% inner_join(feature_seqs_tputr, by = c("Reference" = "transcript"))
+
+GCcontfp <- ggplot(mestdagh_affected_fpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch =T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("5' UTR GC content") + 
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test", 
+                     size = 6,
+                     hjust = -.5)
+
+
+GCcontfp
+
+
+meany <- mestdagh_affected_fpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_fp = mean(GC_content))
+
+number <- mestdagh_affected_fpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(meany, number, by = c("response"))
+
+emf("mestdagh_2008_fpGCcont.emf", height = 6, width = 9)
+print(GCcontfp)
+dev.off()
+
+
+
+GCcontcds <- ggplot(mestdagh_affected_cdsfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black" ) +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("CDS GC content") + 
+  ggtitle(tytle) +    
+  my_theme +
+  stat_compare_means(size = 6,
+                     hjust = -0.5)
+
+meany <- mestdagh_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_cds = mean(GC_content))
+
+number <- mestdagh_affected_cdsfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GCcontcds
+
+emf("mestdagh_2008_CDS GC Content.emf", height = 6, width = 9)
+print(GCcontcds)
+dev.off()
+
+
+GCconttp <- ggplot(mestdagh_affected_tpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("3' UTR GC content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(
+    method = "wilcox.test",
+    size = 6,
+    hjust = -0.5)
+
+GCconttp
+
+emf("mestdagh_2008_TP GC Content.emf", height = 6, width = 9)
+print(GCconttp)
+dev.off()
+
+meany <- mestdagh_affected_tpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_tp = mean(GC_content))
+
+number <- mestdagh_affected_tpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GC1contcds <- ggplot(mestdagh_affected_cdsfasta, aes(x = response, y = GC1_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC1 content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC1contcds
+
+emf("mestdagh_2008_GC1 Content.emf", height = 6, width = 9)
+print(GC1contcds)
+dev.off()
+
+meany <- mestdagh_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC1 = mean(GC1_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC2contcds <- ggplot(mestdagh_affected_cdsfasta, aes(x = response, y = GC2_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC2 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC2contcds
+
+emf("mestdagh_2008_GC2 Content.emf", height = 6, width = 9)
+print(GC2contcds)
+dev.off()
+
+meany <- mestdagh_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC2 = mean(GC2_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC3contcds <-  ggplot(mestdagh_affected_cdsfasta, aes(x = response, y = GC3_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC3 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC3contcds
+
+emf("mestdagh_2008_GC3 Content.emf", height = 6, width = 9)
+print(GC3contcds)
+dev.off()
+
+meany <- mestdagh_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC3 = mean(GC3_content))
+z <- inner_join(z, meany, by = c("response"))
+
+Upregulated <- mestdagh_affected %>% filter(response == "Upregulated")
+Downregulated <- mestdagh_affected %>% filter(response == "Downregulated")
+
+fasta_CDS <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_CDSs.fasta")
+sequences <- getSequence(fasta_CDS)
+headers <- getName(fasta_CDS)
+
+upreg <- pull(Upregulated, var = Reference)
+downreg <- pull(Downregulated, var = Reference)
+
+Upregulated_list <- list()
+Downregulated_list <- list()
+
+for (i in 1:length(headers)) {
+  transcript <- headers[[i]]
+  
+  if (transcript %in% upreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Upregulated")) -> Upregulated_list[[transcript]]
+  }
+  
+  if (transcript %in% downreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Downregulated")) -> Downregulated_list[[transcript]]
+  }
+}
+
+Upregulated_data <- do.call("rbind", Upregulated_list)
+Downregulated_data <- do.call("rbind", Downregulated_list)
+all_data <- rbind(Upregulated_data, Downregulated_data)
+
+RCU <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_RSCU = mean(RSCU, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_RSCU)
+
+
+RCU_plot<- ggplot(RCU,aes(x = Upregulated, y = Downregulated))+ 
+  geom_point(aes(colour = wobble), shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("RSCU Upregulated Proteins") + 
+  ylab("RSCU Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+RCU_plot
+
+emf("mestdagh 2008 RCU.emf", height= 6, width= 9)
+print(RCU_plot)
+dev.off()
+
+meanfreq <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_freq)
+
+freq_plot <-  ggplot(meanfreq,aes(x = Upregulated, y = Downregulated, colour = wobble))+ 
+  geom_point(shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("Codon Frequency Upregulated Proteins") + 
+  ylab("Codon Frequency \n Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+freq_plot
+
+emf("mestdagh 2008 Freq_plot.emf", height= 6, width= 9)
+print(freq_plot)
+dev.off()
+
+#####
+
+
+###
+optimal <- inner_join(all_data,hela, by = c("codon"="Codon"))
+
+optimal1 <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*HEK293_tAI*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+
+optimality_plot <- ggplot(optimal1,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "wilcox",
+                                  size = 6,
+                                  hjust = -0.5)
+
+optimality_plot
+
+alt_optimality <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*cor_estimate*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+alt_plot <- ggplot(alt_optimality,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Alt. Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Downregulated", "Upregulated")) + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "wilcox",
+                                  size = 6,
+                                  hjust = -0.5)
+
+alt_plot
+
+
+emf("mestdagh 2008 Optimality Plot.emf", height= 6, width= 9)
+print(optimality_plot)
+dev.off()
+
+emf("mestdagh 2008 alternative plot.emf", height = 6, width = 9)
+print(alt_plot)
+dev.off()
+
+number <- optimal %>% 
+  dplyr::count(response)
+
+meany <- optimal %>% 
+  group_by(response) %>%
+  summarise(mean_opt = mean(mean_optimality))
+
+z <- inner_join(z, meany, by = c("response"))
+
+
+GCAU <- all_data %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")),
+         `Wobble Position Identity` = factor(case_when(wobble == "A" | wobble == "U" ~ "A/U",
+                                                       wobble == "C" | wobble == "G" ~ "G/C",))) %>%
+  group_by(group, transcript, `Wobble Position Identity`) %>%
+  summarise(meanfreq = mean(freq)) %>% 
+  ungroup
+
+
+GCAU_plot <- GCAU %>% ggplot(aes(x = group, y = meanfreq, fill = `Wobble Position Identity`))+
+  geom_boxplot(lwd =1)+
+  scale_fill_manual(values = c("red","blue")) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen", position = position_dodge(width = 0.75), show.legend = F) +
+  xlab("Response") +
+  ylab("Mean Frequency")+
+  ggtitle(tytle)+
+  my_theme + theme(legend.position = "bottom") +
+  stat_compare_means(aes(group = `Wobble Position Identity`),
+                     label = "p.signif",
+                     method = "t.test",
+                     size = 7) 
+print(GCAU_plot)
+
+emf("mestdagh 2008 GCAU plot.emf", height = 6, width = 9)
+print(GCAU_plot)
+dev.off()
+
+#Amino acid bias ####
+aa_data <- all_data %>%
+  filter(AA != "Stp") %>%
+  group_by(AA, group) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  spread(key = group, value = mean_freq) %>%
+  inner_join(AAs, by = c("AA" = "AA"))
+
+aa_data$AA <- as.factor(aa_data$AA)
+
+
+aa_bias_plot_colours <- ggplot(aa_data, aes(Upregulated,Downregulated, fill = AA)) + 
+  geom_point(shape = 21,size = 5, alpha = 0.8) +
+  scale_fill_manual(values = c("blue", "blue4", "blueviolet", "brown", "cadetblue1", "cadetblue4","chartreuse", "chartreuse4", "chocolate1", "coral1", "cornflowerblue", "darkgoldenrod1", "slateblue4", "darkgreen", "darkmagenta", "deeppink", "green", "snow4", "yellow", "turquoise1")) +
+  geom_abline(slope = 1, intercept = 0, size = 1, linetype = "dashed") +
+  xlab("AA Frequency Upregulated Proteins") + 
+  ylab("AA Frequency Downregulated Proteins") +
+  ggtitle(tytle) + 
+  my_theme +
+  theme(legend.position = "right")
+
+aa_bias_plot_colours
+
+
+emf("mestdagh 2008 Amino Acid Bias.emf", height = 6, width = 9)
+print(aa_bias_plot_colours)
+dev.off()
+
+df1 <- mestdagh_affected_cdsfasta
+df1 <- df1 %>% 
+  mutate(percentile_group = 
+           factor(case_when(df1$GC3_content < quantile(df1$GC3_content, 0.1) ~ "0 - 10",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.1) & df1$GC3_content < quantile(df1$GC3_content, 0.2)  ~ "10 - 20",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.2) & df1$GC3_content < quantile(df1$GC3_content, 0.3)  ~ "20 - 30",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.3) & df1$GC3_content < quantile(df1$GC3_content, 0.4)  ~ "30 - 40",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.4) & df1$GC3_content < quantile(df1$GC3_content, 0.5)  ~ "40 - 50",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.5) & df1$GC3_content < quantile(df1$GC3_content, 0.6)  ~ "50 - 60",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.6) & df1$GC3_content < quantile(df1$GC3_content, 0.7)  ~ "60 - 70",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.7) & df1$GC3_content < quantile(df1$GC3_content, 0.8)  ~ "70 - 80",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.8) & df1$GC3_content < quantile(df1$GC3_content, 0.9)  ~ "80 - 90",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.9) ~ "90 - 100")))
+
+test<- inner_join(df1 %>% group_by(percentile_group) %>% summarise(across(Protein, mean, na.rm = T)),df1 %>% dplyr::count(percentile_group), by = "percentile_group")
+
+x <- ggplot(test, aes(percentile_group, Protein, label = n)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(color = "black", fontface = "bold", position = position_stack(vjust = 0.5), size = 10) + 
+  xlab("GC3 Decile (%)") + 
+  ylab("Mean Fold Change Protein (log2)") + 
+  ggtitle("Mean Protein Fold Change \n per GC3 Decile") + 
+  my_theme + theme(axis.text.x = element_text(angle=45, vjust = +0.5))
+x
+
+emf("mestdagh 2008 GC3 Decile.emf")
+print(x)
+dev.off()
+
+write.csv(z, "Mestdagh_2011_stats.csv", row.names=FALSE, quote=FALSE)
+
+keep(feature_seqs_CDS,feature_seqs_fputr,feature_seqs_tputr, AAs, hela, my_cols, my_theme, ENSEMBLE, sure = T)
+Selbach_2014 <- read_csv("mir34.csv")
+Selbach_2014 <- Selbach_2014 %>% select(`Gene Names`, `miR-34 \nseeds`, `Log2 Ratio H/M\nNormalized\nmiR-34a`, `Log2 Ratio H/M\nNormalized\nmiR-34c`)
+Selbach_2014 <- Selbach_2014 %>% separate(`Gene Names`, into = paste0('Gene'), sep = ';')
+Selbach_2014 <- Selbach_2014 %>% inner_join(ENSEMBLE, by = c("Gene" = "Gene_name"))
+Selbach_2014 <- Selbach_2014 %>% drop_na(`RefSeq_match_transcript`)
+Selbach_2014 <- Selbach_2014 %>% 
+  select(`RefSeq_match_transcript`,`Gene`, `miR-34 \nseeds`, `Log2 Ratio H/M\nNormalized\nmiR-34a`, `Log2 Ratio H/M\nNormalized\nmiR-34c`) %>%
+  rename(Reference = `RefSeq_match_transcript`, tp_sites = `miR-34 \nseeds`)
+
+Selbach_2014 <- Selbach_2014 %>%
+  filter(tp_sites >= 1)
+
+Selbach_2014_mir34a <- Selbach_2014 %>% 
+  select(Reference,Gene,`Log2 Ratio H/M\nNormalized\nmiR-34a`, tp_sites) %>%
+  rename(Protein = `Log2 Ratio H/M\nNormalized\nmiR-34a`) 
+
+Selbach_2014_mir34c <- Selbach_2014 %>% 
+  select(Reference,Gene,`Log2 Ratio H/M\nNormalized\nmiR-34c`, tp_sites) %>%
+  rename(Protein = `Log2 Ratio H/M\nNormalized\nmiR-34c`) 
+
+Selbach_2014 <- rbind(Selbach_2014_mir34a, Selbach_2014_mir34c)
+Selbach_2014 <- Selbach_2014 %>% drop_na(Protein)
+
+Selbach_2014$Reference = substr(Selbach_2014$Reference,1,9)
+
+  
+Selbach_2014_Downregulated <- Selbach_2014 %>% 
+  filter(Protein < quantile(Selbach_2014$Protein,0.25, na.rm = T)) %>%
+  mutate(response = "Downregulated")
+
+Selbach_2014_Upregulated <- Selbach_2014 %>% 
+  filter(Protein > quantile(Selbach_2014$Protein,0.75, na.rm = T)) %>%
+  mutate(response = "Upregulated")
+
+Selbach_2014_affected <- rbind(Selbach_2014_Downregulated, Selbach_2014_Upregulated)
+
+
+rm(Selbach_2014_mir34a, Selbach_2014_mir34c)
+
+tytle = "Selbach et al., 2014"
+
+########################
+
+
+Upvsdown <- ggplot(Selbach_2014_affected, aes(Protein, color = response, fill = response)) + 
+  geom_density(aes(x= Protein, y=..scaled..),size =1) + 
+  xlim(-1,1) + 
+  scale_color_manual(values = c("blue", "firebrick3"), guide = FALSE ) + 
+  scale_fill_manual(values = c("blue", "firebrick3"), name = "Response") + 
+  xlab("Protein fold change (log2)") + 
+  ylab("Cumulative fraction") + 
+  ggtitle(tytle)+ 
+  my_theme +
+  theme(legend.position = "bottom")
+
+Upvsdown
+
+emf("Selbach_2014_Upvsdown.emf", height = 6, width = 9)
+print(Upvsdown)
+dev.off()
+
+
+Selbach_2014_affected_fpfasta <- Selbach_2014_affected %>% inner_join(feature_seqs_fputr, by = c("Reference" = "transcript"))
+Selbach_2014_affected_cdsfasta <- Selbach_2014_affected %>% inner_join(feature_seqs_CDS, by = c("Reference" = "transcript"))
+Selbach_2014_affected_tpfasta <- Selbach_2014_affected %>% inner_join(feature_seqs_tputr, by = c("Reference" = "transcript"))
+
+GCcontfp <- ggplot(Selbach_2014_affected_fpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch =T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("5' UTR GC content") + 
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test", 
+                     size = 6,
+                     hjust = -.5)
+
+
+GCcontfp
+
+
+meany <- Selbach_2014_affected_fpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_fp = mean(GC_content))
+
+number <- Selbach_2014_affected_fpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(meany, number, by = c("response"))
+
+emf("Selbach_2014_fpGCcont.emf", height = 6, width = 9)
+print(GCcontfp)
+dev.off()
+
+
+
+GCcontcds <- ggplot(Selbach_2014_affected_cdsfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black" ) +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("CDS GC content") + 
+  ggtitle(tytle) +    
+  my_theme +
+  stat_compare_means(size = 6,
+                     hjust = -0.5)
+
+meany <- Selbach_2014_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_cds = mean(GC_content))
+
+number <- Selbach_2014_affected_cdsfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GCcontcds
+
+emf("Selbach_2014_CDS GC Content.emf", height = 6, width = 9)
+print(GCcontcds)
+dev.off()
+
+
+GCconttp <- ggplot(Selbach_2014_affected_tpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("3' UTR GC content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(
+    method = "wilcox.test",
+    size = 6,
+    hjust = -0.5)
+
+GCconttp
+
+emf("Selbach_2014_TP GC Content.emf", height = 6, width = 9)
+print(GCconttp)
+dev.off()
+
+meany <- Selbach_2014_affected_tpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_tp = mean(GC_content))
+
+number <- Selbach_2014_affected_tpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GC1contcds <- ggplot(Selbach_2014_affected_cdsfasta, aes(x = response, y = GC1_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC1 content") + 
+  ggtitle(tytle) +
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC1contcds
+
+emf("Selbach_2014_GC1 Content.emf", height = 6, width = 9)
+print(GC1contcds)
+dev.off()
+
+meany <- Selbach_2014_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC1 = mean(GC1_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC2contcds <- ggplot(Selbach_2014_affected_cdsfasta, aes(x = response, y = GC2_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC2 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC2contcds
+
+emf("Selbach_2014_GC2 Content.emf", height = 6, width = 9)
+print(GC2contcds)
+dev.off()
+
+meany <- Selbach_2014_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC2 = mean(GC2_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC3contcds <-  ggplot(Selbach_2014_affected_cdsfasta, aes(x = response, y = GC3_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC3 content") + 
+  ggtitle(tytle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC3contcds
+
+emf("Selbach_2014_GC3 Content.emf", height = 6, width = 9)
+print(GC3contcds)
+dev.off()
+
+meany <- Selbach_2014_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC3 = mean(GC3_content))
+z <- inner_join(z, meany, by = c("response"))
+
+Upregulated <- Selbach_2014_affected %>% filter(response == "Upregulated")
+Downregulated <- Selbach_2014_affected %>% filter(response == "Downregulated")
+
+fasta_CDS <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_CDSs.fasta")
+sequences <- getSequence(fasta_CDS)
+headers <- getName(fasta_CDS)
+
+upreg <- pull(Upregulated, var = Reference)
+downreg <- pull(Downregulated, var = Reference)
+
+Upregulated_list <- list()
+Downregulated_list <- list()
+
+for (i in 1:length(headers)) {
+  transcript <- headers[[i]]
+  
+  if (transcript %in% upreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Upregulated")) -> Upregulated_list[[transcript]]
+  }
+  
+  if (transcript %in% downreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Downregulated")) -> Downregulated_list[[transcript]]
+  }
+}
+
+Upregulated_data <- do.call("rbind", Upregulated_list)
+Downregulated_data <- do.call("rbind", Downregulated_list)
+all_data <- rbind(Upregulated_data, Downregulated_data)
+
+RCU <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_RSCU = mean(RSCU, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_RSCU)
+
+
+RCU_plot<- ggplot(RCU,aes(x = Upregulated, y = Downregulated))+ 
+  geom_point(aes(colour = wobble), shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("RSCU Upregulated Proteins") + 
+  ylab("RSCU Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+RCU_plot
+
+emf("Selbach 2014 RCU.emf", height= 6, width= 9)
+print(RCU_plot)
+dev.off()
+
+meanfreq <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_freq)
+
+freq_plot <-  ggplot(meanfreq,aes(x = Upregulated, y = Downregulated, colour = wobble))+ 
+  geom_point(shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("Codon Frequency Upregulated Proteins") + 
+  ylab("Codon Frequency \n Downregulated Proteins") +
+  ggtitle(tytle)+
+  my_theme +theme(legend.position = "bottom")
+
+freq_plot
+
+emf("Selbach 2014 Freq_plot.emf", height= 6, width= 9)
+print(freq_plot)
+dev.off()
+
+#####
+
+
+###
+optimal <- inner_join(all_data,hela, by = c("codon"="Codon"))
+
+optimal1 <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*HeLa_CSC*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+
+optimality_plot <- ggplot(optimal1,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "t.test",
+                                  size = 6,
+                                  hjust = -0.5)
+
+optimality_plot
+
+alt_optimality <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*cor_estimate*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+alt_plot <- ggplot(alt_optimality,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Alt. Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Downregulated", "Upregulated")) + 
+  ggtitle(tytle) + 
+  my_theme +   stat_compare_means(method = "wilcox",
+                                  size = 6,
+                                  hjust = -0.5)
+
+alt_plot
+
+
+emf("Selbach 2014 Optimality Plot.emf", height= 6, width= 9)
+print(optimality_plot)
+dev.off()
+
+emf("Selbach 2014 Alternative plot.emf", height = 6, width = 9)
+print(alt_plot)
+dev.off()
+
+
+number <- optimal %>% 
+  dplyr::count(response)
+
+meany <- optimal %>% 
+  group_by(response) %>%
+  summarise(mean_opt = mean(mean_optimality))
+
+z <- inner_join(z, meany, by = c("response"))
+
+GCAU <- all_data %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")),
+         `Wobble Position Identity` = factor(case_when(wobble == "A" | wobble == "U" ~ "A/U",
+                                                       wobble == "C" | wobble == "G" ~ "G/C",))) %>%
+  group_by(group, transcript, `Wobble Position Identity`) %>%
+  summarise(meanfreq = mean(freq)) %>% 
+  ungroup
+
+
+GCAU_plot <- GCAU %>% ggplot(aes(x = group, y = meanfreq, fill = `Wobble Position Identity`))+
+  geom_boxplot(lwd =1)+
+  scale_fill_manual(values = c("red","blue")) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen", position = position_dodge(width = 0.75), show.legend = F) +
+  xlab("Response") +
+  ylab("Mean Frequency")+
+  ggtitle(tytle)+
+  my_theme + theme(legend.position = "bottom") +
+  stat_compare_means(aes(group = `Wobble Position Identity`),
+                     label = "p.signif",
+                     method = "t.test",
+                     size = 7) 
+print(GCAU_plot)
+
+emf("Selbach 2014 GCAU plot.emf", height = 6, width = 9)
+print(GCAU_plot)
+dev.off()
+
+#Amino acid bias ####
+aa_data <- all_data %>%
+  filter(AA != "Stp") %>%
+  group_by(AA, group) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  spread(key = group, value = mean_freq) %>%
+  inner_join(AAs, by = c("AA" = "AA"))
+
+aa_data$AA <- as.factor(aa_data$AA)
+
+
+aa_bias_plot_colours <- ggplot(aa_data, aes(Upregulated,Downregulated, fill = AA)) + 
+  geom_point(shape = 21,size = 5, alpha = 0.8) +
+  scale_fill_manual(values = c("blue", "blue4", "blueviolet", "brown", "cadetblue1", "cadetblue4","chartreuse", "chartreuse4", "chocolate1", "coral1", "cornflowerblue", "darkgoldenrod1", "slateblue4", "darkgreen", "darkmagenta", "deeppink", "green", "snow4", "yellow", "turquoise1")) +
+  geom_abline(slope = 1, intercept = 0, size = 1, linetype = "dashed") +
+  xlab("AA Frequency Upregulated Proteins") + 
+  ylab("AA Frequency Downregulated Proteins") +
+  ggtitle(tytle) + 
+  my_theme +
+  theme(legend.position = "right")
+
+aa_bias_plot_colours
+
+
+emf("Selbach 2014 Amino Acid Bias.emf", height = 6, width = 9)
+print(aa_bias_plot_colours)
+dev.off()
+
+df1 <- Selbach_2014_affected_cdsfasta
+df1 <- df1 %>% 
+  mutate(percentile_group = 
+           factor(case_when(df1$GC3_content < quantile(df1$GC3_content, 0.1) ~ "0 - 10",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.1) & df1$GC3_content < quantile(df1$GC3_content, 0.2)  ~ "10 - 20",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.2) & df1$GC3_content < quantile(df1$GC3_content, 0.3)  ~ "20 - 30",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.3) & df1$GC3_content < quantile(df1$GC3_content, 0.4)  ~ "30 - 40",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.4) & df1$GC3_content < quantile(df1$GC3_content, 0.5)  ~ "40 - 50",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.5) & df1$GC3_content < quantile(df1$GC3_content, 0.6)  ~ "50 - 60",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.6) & df1$GC3_content < quantile(df1$GC3_content, 0.7)  ~ "60 - 70",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.7) & df1$GC3_content < quantile(df1$GC3_content, 0.8)  ~ "70 - 80",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.8) & df1$GC3_content < quantile(df1$GC3_content, 0.9)  ~ "80 - 90",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.9) ~ "90 - 100")))
+
+test<- inner_join(df1 %>% group_by(percentile_group) %>% summarise(across(Protein, mean, na.rm = T)),df1 %>% dplyr::count(percentile_group), by = "percentile_group")
+
+x <- ggplot(test, aes(percentile_group, Protein, label = n)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(color = "black", fontface = "bold", position = position_stack(vjust = 0.5), size = 10) + 
+  xlab("GC3 Decile (%)") + 
+  ylab("Mean Fold Change Protein (log2)") + 
+  ggtitle("Mean Protein Fold Change \n per GC3 Decile") + 
+  my_theme + theme(axis.text.x = element_text(angle=45, vjust = +0.5))
+x
+
+emf("Selbach 2008 GC3 Decile.emf")
+print(x)
+dev.off()
+
+write.csv(z, "Selbach_2014_stats.csv", row.names=FALSE, quote=FALSE)
+
+keep(feature_seqs_CDS,feature_seqs_fputr,feature_seqs_tputr, AAs, hela, my_cols, my_theme, ENSEMBLE, sure = T)
+
+
+#Selbach miR1 transfection-->HeLa ####
+Selbach_data_all <- read_tsv("Selbach_all_data_ever.txt")
+Selbach_data_all <- Selbach_data_all %>% select(`Gene Names`, `log2FC median let7`, `log2FC median miR1`, `log2FC median miR155`, `log2FC median miR16`, `log2FC median miR30`)
+Selbach_data_all <- Selbach_data_all %>% separate(`Gene Names`, into = paste0('Gene'), sep = ';')
+Selbach_data_all <- Selbach_data_all %>% 
+  inner_join(ENSEMBLE, by = c("Gene" = "Gene_name"))
+
+Selbach_data_all<- Selbach_data_all %>% select(`RefSeq_match_transcript`, `Gene`, `log2FC median let7`, `log2FC median miR1`, `log2FC median miR155`, `log2FC median miR16`, `log2FC median miR30`)
+Selbach_data_all <- Selbach_data_all %>% drop_na(`RefSeq_match_transcript`)
+Selbach_data_all$RefSeq_match_transcript = substr(Selbach_data_all$RefSeq_match_transcript,1,9)
+Selbach_data_all <- Selbach_data_all %>% inner_join(feature_seqs_tputr, by = c("RefSeq_match_transcript"="transcript"))
+Selbach_data_all <- Selbach_data_all %>% select(!`GC_content`)
+
+
+selbach_data_let7 <- Selbach_data_all %>% select(`RefSeq_match_transcript`,`Gene`, `log2FC median let7`, `sequence`)
+selbach_data_let7 <- selbach_data_let7 %>% drop_na(`log2FC median let7`)
+#seed site GAGGUAG
+index <- str_detect(string =  selbach_data_let7$sequence, pattern =  "ctacctc|tacctca|ctacctca")
+selbach_data_let7 <- selbach_data_let7[index,]
+selbach_data_let7 <- selbach_data_let7 %>% mutate(tp_sites = 1) %>%
+  rename(Reference = `RefSeq_match_transcript`, Protein = `log2FC median let7`) %>%
+  select(my_cols) %>%
+  mutate(`miR` = "let7")
+
+Selbach_bottom <- selbach_data_let7 %>% filter(Protein < quantile(selbach_data_let7$Protein,0.25, na.rm = T))
+Selbach_top <- selbach_data_let7 %>% filter(Protein > quantile(selbach_data_let7$Protein,0.75, na.rm = T))
+
+
+
+selbach_data_mir1 <- Selbach_data_all %>% select(`RefSeq_match_transcript`,`Gene`, `log2FC median miR1`, `sequence`) 
+selbach_data_mir1 <- selbach_data_mir1 %>% drop_na(`log2FC median miR1`)
+#seed site GGAAUGU
+index <- str_detect(string =  selbach_data_mir1$sequence, pattern =  "cattcca|acattcc|acattcca")
+selbach_data_mir1 <- selbach_data_mir1[index,]
+selbach_data_mir1 <- selbach_data_mir1 %>% mutate(tp_sites = 1) %>%
+  rename(Reference = `RefSeq_match_transcript`, Protein = `log2FC median miR1`) %>%
+  select(my_cols) %>%
+  mutate(`miR` = "mir1")
+
+Selbach_bottom <- rbind(Selbach_bottom,selbach_data_mir1 %>% filter(Protein < quantile(selbach_data_mir1$Protein,0.25, na.rm = T)))
+Selbach_top <- rbind(Selbach_top,selbach_data_mir1 %>% filter(Protein > quantile(selbach_data_mir1$Protein,0.75, na.rm = T)))
+
+
+selbach_data_mir155 <- Selbach_data_all %>% select(`RefSeq_match_transcript`,`Gene`,`log2FC median miR155`, `sequence`) 
+selbach_data_mir155 <- selbach_data_mir155 %>% drop_na(`log2FC median miR155`)
+#seed site UAAUGCU
+index <- str_detect(string =  selbach_data_mir155$sequence, pattern =  "gcattaa|agcatta|agcattaa")
+selbach_data_mir155 <- selbach_data_mir155[index,]
+selbach_data_mir155 <- selbach_data_mir155 %>% mutate(tp_sites = 1) %>%
+  rename(Reference = `RefSeq_match_transcript`, Protein = `log2FC median miR155`) %>%
+  select(my_cols) %>%
+  mutate(`miR` = "mir155")
+
+Selbach_bottom <- rbind(Selbach_bottom,selbach_data_mir155 %>% filter(Protein < quantile(selbach_data_mir155$Protein,0.25, na.rm = T)))
+Selbach_top <- rbind(Selbach_top,selbach_data_mir155 %>% filter(Protein > quantile(selbach_data_mir155$Protein,0.75, na.rm = T)))
+
+
+
+
+selbach_data_mir16 <- Selbach_data_all %>% select(`RefSeq_match_transcript`,`Gene`, `log2FC median miR16`, `sequence`) 
+selbach_data_mir16 <- selbach_data_mir16 %>% drop_na(`log2FC median miR16`)
+#seed site AGCAGCA
+index <- str_detect(string =  selbach_data_mir16$sequence, pattern =  "gctgcta|tgctgct|tgctgcta")
+selbach_data_mir16 <- selbach_data_mir16[index,]
+selbach_data_mir16 <- selbach_data_mir16 %>% mutate(tp_sites = 1) %>%
+  rename(Reference = `RefSeq_match_transcript`, Protein = `log2FC median miR16`) %>%
+  select(my_cols) %>%
+  mutate(`miR` = "mir16")
+
+Selbach_bottom <- rbind(Selbach_bottom,selbach_data_mir16 %>% filter(Protein < quantile(selbach_data_mir16$Protein,0.25, na.rm = T)))
+Selbach_top <- rbind(Selbach_top,selbach_data_mir16 %>% filter(Protein > quantile(selbach_data_mir16$Protein,0.75, na.rm = T)))
+
+
+selbach_data_mir30<- Selbach_data_all %>% select(`RefSeq_match_transcript`,`Gene`, `log2FC median miR30`, `sequence`) 
+selbach_data_mir30 <- selbach_data_mir30 %>% drop_na(`log2FC median miR30`)
+#seed site GUAAACA
+index <- str_detect(string =  selbach_data_mir30$sequence, pattern =  "gtttaca|tgtttac|tgtttaca")
+selbach_data_mir30 <- selbach_data_mir30[index,]
+selbach_data_mir30 <- selbach_data_mir30 %>% mutate(tp_sites = 1) %>%
+  rename(Reference = `RefSeq_match_transcript`, Protein = `log2FC median miR30`) %>%
+  select(my_cols) %>%
+  mutate(`miR` = "mir30")
+
+
+Selbach_bottom <- rbind(Selbach_bottom,selbach_data_mir30 %>% filter(Protein < quantile(selbach_data_mir30$Protein,0.25, na.rm = T)))
+Selbach_bottom<- Selbach_bottom %>% mutate(`response` = as.factor("Downregulated"))
+Selbach_top <- rbind(Selbach_top,selbach_data_mir30 %>% filter(Protein > quantile(selbach_data_mir30$Protein,0.75, na.rm = T)))
+Selbach_top<- Selbach_top %>% mutate(`response` = as.factor("Upregulated"))
+
+Selbach_affected <- rbind(Selbach_bottom, Selbach_top)
+keep(Selbach_bottom, Selbach_top, Selbach_affected, my_theme, ENSEMBLE, AAs, feature_seqs_tputr, feature_seqs_CDS, feature_seqs_fputr, hela, my_cols, sure = T)
+
+fyle = "Selbach et al., 2008"
+
+################################
+
+Upvsdown <- ggplot(Selbach_affected, aes(Protein, color = response, fill = response)) + 
+  geom_density(aes(x= Protein, y=..scaled..),size =1) + 
+  xlim(-1,1) + 
+  scale_color_manual(values = c("blue", "firebrick3"), guide = FALSE ) + 
+  scale_fill_manual(values = c("blue", "firebrick3"), name = "Response") + 
+  xlab("Protein fold change (log2)") + 
+  ylab("Cumulative fraction") + 
+  ggtitle(fyle)+ 
+  my_theme + theme(legend.position = "bottom")
+
+Upvsdown
+
+emf("Selbach_2008_Upvsdown.emf", height = 6, width = 9)
+print(Upvsdown)
+dev.off()
+
+
+Selbach_affected_fpfasta <- Selbach_affected %>% inner_join(feature_seqs_fputr, by = c("Reference" = "transcript"))
+Selbach_affected_cdsfasta <- Selbach_affected %>% inner_join(feature_seqs_CDS, by = c("Reference" = "transcript"))
+Selbach_affected_tpfasta <- Selbach_affected %>% inner_join(feature_seqs_tputr, by = c("Reference" = "transcript"))
+
+GCcontfp <- ggplot(Selbach_affected_fpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch =T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("5' UTR GC content") + 
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ggtitle(fyle) +
+  my_theme +
+  stat_compare_means(method = "t.test", 
+                     size = 6,
+                     hjust = -.5)
+
+
+GCcontfp
+
+
+meany <- Selbach_affected_fpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_fp = mean(GC_content))
+
+number <- Selbach_affected_fpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(meany, number, by = c("response"))
+
+emf("Selbach_2008_fpGCcont.emf", height = 6, width = 9)
+print(GCcontfp)
+dev.off()
+
+
+
+GCcontcds <- ggplot(Selbach_affected_cdsfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black" ) +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  xlab("Response") + 
+  ylab("CDS GC content") + 
+  ggtitle(fyle) +    
+  my_theme +
+  stat_compare_means(size = 6,
+                     hjust = -0.5)
+
+meany <- Selbach_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_cds = mean(GC_content))
+
+number <- Selbach_affected_cdsfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GCcontcds
+
+emf("Selbach_2008_CDS GC Content.emf", height = 6, width = 9)
+print(GCcontcds)
+dev.off()
+
+
+GCconttp <- ggplot(Selbach_affected_tpfasta, aes(x = response, y = GC_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("3' UTR GC content") + 
+  ggtitle(fyle) +
+  my_theme +
+  stat_compare_means(
+    method = "wilcox.test",
+    size = 6,
+    hjust = -0.5)
+
+GCconttp
+
+emf("Selbach_2008_TP GC Content.emf", height = 6, width = 9)
+print(GCconttp)
+dev.off()
+
+meany <- Selbach_affected_tpfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC_tp = mean(GC_content))
+
+number <- Selbach_affected_tpfasta %>% 
+  dplyr::count(response)
+
+z <- inner_join(z, meany, by = c("response"))
+z <- inner_join(z, number, by = c("response"))
+
+GC1contcds <- ggplot(Selbach_affected_cdsfasta, aes(x = response, y = GC1_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC1 content") + 
+  ggtitle(fyle) +
+  my_theme +
+  stat_compare_means(method = "t.test",
+                     size = 6,
+                     hjust = -0.5)
+
+GC1contcds
+
+emf("Selbach_2008_GC1 Content.emf", height = 6, width = 9)
+print(GC1contcds)
+dev.off()
+
+meany <- Selbach_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC1 = mean(GC1_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC2contcds <- ggplot(Selbach_affected_cdsfasta, aes(x = response, y = GC2_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") + 
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC2 content") + 
+  ggtitle(fyle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC2contcds
+
+emf("Selbach_2008_GC2 Content.emf", height = 6, width = 9)
+print(GC2contcds)
+dev.off()
+
+meany <- Selbach_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC2 = mean(GC2_content))
+z <- inner_join(z, meany, by = c("response"))
+
+GC3contcds <-  ggplot(Selbach_affected_cdsfasta, aes(x = response, y = GC3_content)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") +
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = T, lwd = 1, colour = "black") +  
+  #geom_point(position = position_jitter(width = 0.1), color = "red3", alpha = 0.5) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  xlab("Response") + 
+  ylab("CDS GC3 content") + 
+  ggtitle(fyle) + 
+  my_theme +
+  stat_compare_means(method = "wilcox",
+                     size = 6,
+                     hjust = -0.5)
+
+GC3contcds
+
+emf("Selbach_2008_GC3 Content.emf", height = 6, width = 9)
+print(GC3contcds)
+dev.off()
+
+meany <- Selbach_affected_cdsfasta %>% 
+  group_by(response) %>%
+  summarise(mean_GC3 = mean(GC3_content))
+z <- inner_join(z, meany, by = c("response"))
+
+Upregulated <- Selbach_affected %>% filter(response == "Upregulated")
+Downregulated <- Selbach_affected %>% filter(response == "Downregulated")
+
+fasta_CDS <- read.fasta(file = "All_R_V_HumanRefSeqs_Release85_CDSs.fasta")
+sequences <- getSequence(fasta_CDS)
+headers <- getName(fasta_CDS)
+
+upreg <- pull(Upregulated, var = Reference)
+downreg <- pull(Downregulated, var = Reference)
+
+Upregulated_list <- list()
+Downregulated_list <- list()
+
+for (i in 1:length(headers)) {
+  transcript <- headers[[i]]
+  
+  if (transcript %in% upreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Upregulated")) -> Upregulated_list[[transcript]]
+  }
+  
+  if (transcript %in% downreg) {
+    df <- uco(sequences[[i]], frame = 0, index = c("eff", "freq", "rscu"), as.data.frame = T,
+              NA.rscu = NA)
+    
+    df %>%
+      mutate(transcript = rep(transcript),
+             group = rep("Downregulated")) -> Downregulated_list[[transcript]]
+  }
+}
+
+Upregulated_data <- do.call("rbind", Upregulated_list)
+Downregulated_data <- do.call("rbind", Downregulated_list)
+all_data <- rbind(Upregulated_data, Downregulated_data)
+
+RCU <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_RSCU = mean(RSCU, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_RSCU)
+
+
+RCU_plot<- ggplot(RCU,aes(x = Upregulated, y = Downregulated))+ 
+  geom_point(aes(colour = wobble), shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("RSCU Upregulated Proteins") + 
+  ylab("RSCU Downregulated Proteins") +
+  ggtitle(fyle)+
+  my_theme +theme(legend.position = "bottom")
+
+RCU_plot
+
+emf("Selbach 2008 RCU.emf", height= 6, width= 9)
+print(RCU_plot)
+dev.off()
+
+meanfreq <- all_data %>%
+  group_by(group, codon) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  spread(key = group, value = mean_freq)
+
+freq_plot <-  ggplot(meanfreq,aes(x = Upregulated, y = Downregulated, colour = wobble))+ 
+  geom_point(shape = 20, alpha = 0.75, size = 5) +
+  scale_color_manual(values = c("blue", "red", "purple4", "forestgreen"), name = "Wobble Base Identity" )+
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", colour = "azure4")+
+  xlab("Codon Frequency Upregulated Proteins") + 
+  ylab("Codon Frequency \n Downregulated Proteins") +
+  ggtitle(fyle)+
+  my_theme +theme(legend.position = "bottom")
+
+freq_plot
+
+emf("Selbach 2008 Freq_plot.emf", height= 6, width= 9)
+print(freq_plot)
+dev.off()
+
+#####
+
+
+###
+
+
+optimal <- inner_join(all_data,hela, by = c("codon"="Codon"))
+
+optimal1 <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*HeLa_CSC*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+
+optimality_plot <- ggplot(optimal1,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Upregulated", "Downregulated")) + 
+  ggtitle(fyle) + 
+  my_theme +   stat_compare_means(method = "t.test",
+                                  size = 6,
+                                  hjust = -0.5)
+
+optimality_plot
+
+alt_optimality <- optimal %>% 
+  rename(`response` = `group`) %>%
+  mutate(Optimality = freq*cor_estimate*1000) %>% 
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C"))) %>%
+  group_by(response,transcript) %>%
+  summarise(mean_optimality = mean(Optimality, na.rm = T))
+
+alt_plot <- ggplot(alt_optimality,aes(response, mean_optimality)) + 
+  geom_violin(fill = "cadetblue1", lwd = 1, colour = "black") + 
+  geom_boxplot(width = 0.2, fill = "royalblue", notch = F, lwd = 1, colour = "black")  +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen") +
+  ylab(expression("Alt. Optimality" ~ "[" *x10^-3* "]")) +
+  xlab("Response") + 
+  scale_x_discrete(labels=c("Downregulated", "Upregulated")) + 
+  ggtitle(fyle) + 
+  my_theme +   stat_compare_means(method = "wilcox",
+                                  size = 6,
+                                  hjust = -0.5)
+
+alt_plot
+
+t.test(optimal$mean_optimality ~ optimal$response)
+wilcox.test(optimal$mean_optimality ~ optimal$response)
+
+emf("Selbach 2008 Optimality Plot.emf", height= 6, width= 9)
+print(optimality_plot)
+dev.off()
+
+emf("Selbach 2008 alternative plot.emf", height = 6, width = 9)
+print(alt_plot)
+dev.off()
+
+
+number <- optimal %>% 
+  dplyr::count(response)
+
+meany <- optimal %>% 
+  group_by(response) %>%
+  summarise(mean_opt = mean(mean_optimality))
+
+z <- inner_join(z, meany, by = c("response"))
+
+
+GCAU <- all_data %>%
+  mutate(wobble = factor(str_sub(codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")),
+         `Wobble Position Identity` = factor(case_when(wobble == "A" | wobble == "U" ~ "A/U",
+                                                       wobble == "C" | wobble == "G" ~ "G/C",))) %>%
+  group_by(group, transcript, `Wobble Position Identity`) %>%
+  summarise(meanfreq = mean(freq)) %>% 
+  ungroup
+
+
+GCAU_plot <- GCAU %>% ggplot(aes(x = group, y = meanfreq, fill = `Wobble Position Identity`))+
+  geom_boxplot(lwd =1)+
+  scale_fill_manual(values = c("red","blue")) +
+  stat_summary(fun=mean, geom="point", shape=15, size=6, colour = "darkgreen", position = position_dodge(width = 0.75), show.legend = F) +
+  xlab("Response") +
+  ylab("Mean Frequency")+
+  ggtitle(fyle)+
+  my_theme + theme(legend.position = "bottom") +
+  stat_compare_means(aes(group = `Wobble Position Identity`),
+                     label = "p.signif",
+                     method = "t.test",
+                     size = 7) 
+print(GCAU_plot)
+
+emf("Selbach 2008 GCAU.emf", height = 6, width = 9)
+print(GCAU_plot)
+dev.off()
+
+#Amino acid bias ####
+aa_data <- all_data %>%
+  filter(AA != "Stp") %>%
+  group_by(AA, group) %>%
+  summarise(mean_freq = mean(freq, na.rm = T)) %>%
+  spread(key = group, value = mean_freq) %>%
+  inner_join(AAs, by = c("AA" = "AA"))
+
+aa_data$AA <- as.factor(aa_data$AA)
+
+
+aa_bias_plot_colours <- ggplot(aa_data, aes(Upregulated,Downregulated, fill = AA)) + 
+  geom_point(shape = 21,size = 5, alpha = 0.8) +
+  scale_fill_manual(values = c("blue", "blue4", "blueviolet", "brown", "cadetblue1", "cadetblue4","chartreuse", "chartreuse4", "chocolate1", "coral1", "cornflowerblue", "darkgoldenrod1", "slateblue4", "darkgreen", "darkmagenta", "deeppink", "green", "snow4", "yellow", "turquoise1")) +
+  geom_abline(slope = 1, intercept = 0, size = 1, linetype = "dashed") +
+  xlab("AA Frequency Upregulated Proteins") + 
+  ylab("AA Frequency Downregulated Proteins") +
+  ggtitle(fyle) + my_theme +theme(legend.position = "right")
+
+aa_bias_plot_colours
+
+
+emf("Selbach 2008 Amino Acid Bias.emf", height = 6, width = 9)
+print(aa_bias_plot_colours)
+dev.off()
+
+df1 <- Selbach_affected_cdsfasta
+df1 <- df1 %>% 
+  mutate(percentile_group = 
+           factor(case_when(df1$GC3_content < quantile(df1$GC3_content, 0.1) ~ "0 - 10",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.1) & df1$GC3_content < quantile(df1$GC3_content, 0.2)  ~ "10 - 20",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.2) & df1$GC3_content < quantile(df1$GC3_content, 0.3)  ~ "20 - 30",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.3) & df1$GC3_content < quantile(df1$GC3_content, 0.4)  ~ "30 - 40",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.4) & df1$GC3_content < quantile(df1$GC3_content, 0.5)  ~ "40 - 50",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.5) & df1$GC3_content < quantile(df1$GC3_content, 0.6)  ~ "50 - 60",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.6) & df1$GC3_content < quantile(df1$GC3_content, 0.7)  ~ "60 - 70",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.7) & df1$GC3_content < quantile(df1$GC3_content, 0.8)  ~ "70 - 80",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.8) & df1$GC3_content < quantile(df1$GC3_content, 0.9)  ~ "80 - 90",
+                            df1$GC3_content >= quantile(df1$GC3_content, 0.9) ~ "90 - 100")))
+
+test<- inner_join(df1 %>% group_by(percentile_group) %>% summarise(across(Protein, mean, na.rm = T)),df1 %>% dplyr::count(percentile_group), by = "percentile_group")
+
+x <- ggplot(test, aes(percentile_group, Protein, label = n)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(color = "black", fontface = "bold", position = position_stack(vjust = 0.5), size = 10) + 
+  xlab("GC3 Decile (%)") + 
+  ylab("Mean Fold Change Protein (log2)") + 
+  ggtitle("Mean Protein Fold Change \n per GC3 Decile") + 
+  my_theme + theme(axis.text.x = element_text(angle=45, vjust = +0.5))
+x
+
+emf("Selbach 2008 GC3 Decile.emf")
+print(x)
+dev.off()
+
+write.csv(z, "Selbach_2008_stats.csv", row.names=FALSE, quote=FALSE)
+
+keep(feature_seqs_CDS,feature_seqs_fputr,feature_seqs_tputr, AAs, hela, my_cols, my_theme, ENSEMBLE, sure = T)
+
+
+hela <- read_csv("Hela.csv")
+
+hela <- hela %>% arrange(HeLa_CSC)  %>% mutate(wobble = factor(str_sub(Codon, 3,3), levels = c("A", "T", "G", "C"), labels = c("A", "U", "G","C")))
+
+hela$Codon <- factor(hela$Codon, levels = hela$Codon, ordered = T)
+
+
+hela.plot_csc <- ggplot(hela, aes(Codon, HeLa_CSC, fill = wobble)) + geom_col() +
+  ggtitle("Endogenous codon stability in HeLa cells") +
+  ylab("Codon Stabilisation Coefficient")+
+  scale_fill_brewer(palette = "Set1", name = "Wobble Base Identity") +
+  my_theme + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.position = "bottom")
+
+hela.plot_csc
+emf("Endogenous Codon Stability.emf", height= 6, width= 16)
+print(hela.plot_csc)
+dev.off()
+
+
+
+hela <- hela %>% arrange(cor_estimate)  %>% mutate(wobble = factor(str_sub(Codon, 3,3), levels = c("a", "t", "g", "c"), labels = c("A", "U", "G","C")))
+
+hela$Codon <- factor(hela$Codon, levels = hela$Codon, ordered = T)
+
+hela
+
+hela.plot_altcsc <- ggplot(hela, aes(Codon, cor_estimate, fill = wobble)) + geom_col() +
+  ggtitle("Alternative CSCs in HEK293 cells") +
+  ylab("Alt. Codon Stabilisation Coefficient")+
+  scale_fill_brewer(palette = "Set1", name = "Wobble Base Identity") +
+  my_theme + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.position = "bottom")
+
+
+
+
+hela.plot_altcsc
+
+
+emf("Alt. Codon Stability.emf", height= 6, width= 16)
+print(hela.plot_altcsc)
+dev.off()
